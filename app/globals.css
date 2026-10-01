@@ -1,0 +1,197 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../styles/quanta/index.css";
+@import "../styles/theme.css";
+@import "../styles/studio/prompt-box.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--hf-type-family-grotesk);
+  --font-sans: var(--hf-type-family-secondary);
+  --font-mono: var(--hf-type-family-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Vireo surface steps (docs/ui-inventory.md §2.1): page → panel → card → raised → hover. */
+  --color-page: #0f1113;
+  --color-panel: var(--hf-color-background-primary);
+  --color-surface: var(--hf-color-background-secondary);
+  --color-raised: var(--hf-color-cool-250);
+  --color-hover: var(--hf-color-cool-200);
+  --color-lime: var(--hf-color-lime-500);
+  --color-pink: #ff005b;
+  /* Deeper pink behind white text (≥ 4.5:1). */
+  --color-pink-strong: #e0004f;
+  --color-hairline: rgba(217, 217, 217, 0.04);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-page text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Studio primitives that plain utilities cannot express. */
+@layer components {
+  /* Display type: Space Grotesk 700, uppercase, −4% tracking. */
+  .font-display {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  /* The lime "keycap" CTA: flat fill with a darker bottom lip. */
+  .btn-keycap {
+    background-color: var(--color-lime);
+    color: #131517;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.43);
+    transition:
+      background-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
+      transform 80ms ease-out;
+  }
+  .btn-keycap:hover:not(:disabled) {
+    background-color: color-mix(in oklab, var(--color-lime) 85%, white);
+  }
+  .btn-keycap:active:not(:disabled) {
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.43);
+    transform: translateY(1px);
+  }
+  .btn-keycap:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-keycap-generate {
+    background-image: radial-gradient(#effe17 40%, #d1fe17 100%);
+  }
+  .btn-keycap-white {
+    background-color: #ffffff;
+    color: #131517;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+  }
+  .glass {
+    background-color: rgba(35, 38, 42, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .fade-bottom {
+    mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .shimmer {
+    background: linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.02) 20%,
+      rgba(255, 255, 255, 0.07) 40%,
+      rgba(255, 255, 255, 0.02) 60%
+    );
+    background-size: 200% 100%;
+    animation: vireo-shimmer 1.6s linear infinite;
+  }
+  .studio-glow {
+    background-image: radial-gradient(
+      120% 100% at 50% 0%,
+      var(--hf-color-transparent-lime-40) 0%,
+      var(--hf-color-transparent-lime-15) 45%,
+      transparent 82%
+    );
+    animation: studio-pulse 2600ms ease-in-out infinite;
+  }
+  .studio-tile {
+    position: absolute;
+    overflow: hidden;
+    border-radius: var(--radius);
+    background-color: var(--card);
+    content-visibility: auto;
+  }
+}
+
+@keyframes studio-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes vireo-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-glow {
+    animation: none;
+    opacity: 0.7;
+  }
+  .shimmer {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-lime);
+  outline-offset: 2px;
+}
