@@ -286,6 +286,11 @@ M2.1 mock/guard coverage (73 focused tests, plus lifecycle additions):
   artifacts are visibly labelled. The estimate endpoint still returns the same
   mock $0.01 for every model; varying it by endpoint is a documented follow-up,
   not a claim of real pricing.
+- **The guard is not a network sandbox.** It is an application-level destination
+  policy on the supported provider client. It does not constrain webhooks,
+  Stripe, Resend, R2, raw sockets or modified in-process code, and it cannot
+  prove that a loopback service is the intended mock. OS/container egress rules
+  are the right control if the threat model includes malicious code.
 - **Licensing/provenance unresolved** at repository level: no root LICENSE,
   template licence unconfirmed, sample media provenance unrecorded. See
   `docs/SOURCE_AND_LICENSE_AUDIT.md`.

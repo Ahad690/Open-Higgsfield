@@ -178,6 +178,13 @@ the environment parser and the client:
   listen host and validates the port; wildcard, LAN and public binds are
   refused.
 
+This is an application-level destination policy, **not a network sandbox**. It
+does not stop modified in-process code, raw sockets, DNS/NAT tricks, or
+unrelated outbound calls (webhooks, Stripe, Resend, R2), and loopback services
+remain reachable. If the threat model includes malicious code inside the
+process, add OS/container egress rules; the guard only prevents an accidental
+provider destination in the supported client path.
+
 The mock's artifacts are deterministic fixtures, not model output:
 `scripts/mock-artifacts.ts` writes labelled PNGs and
 `scripts/mock-media/mock-output.mp4` is a checked-in labelled MP4. The mock
