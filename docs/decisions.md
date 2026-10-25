@@ -217,3 +217,40 @@ image, Plus 6 / 8, Ultra 8 / 12.
   the URL plus re-fetching the status. Revisit if the docs add a signature.
 - **Accessibility:** secondary text is `#9a9b9d` (Quanta's `#828282` fails
   4.5:1 on card surfaces). Lighthouse accessibility: 97+ on the generators.
+
+## Provider abstraction (2026-10-25)
+
+- **One seam, one registered provider.** `lib/providers` defines a small
+  lifecycle contract (submit/status/cancel/estimate/upload, capability flags,
+  canonical terminal states). Higgsfield is the only registered adapter and it
+  delegates to the existing `lib/higgsfield/client.ts`, so every documented
+  path, body and retry rule is unchanged. A second provider is added by
+  implementing the contract and registering it — not by copying the pipeline.
+  See `docs/PROVIDER_ARCHITECTURE.md`.
+- **Two provider concepts, not one field.** `ModelEntry.provider` remains the
+  **model producer**; the new optional `apiProvider` is the **delivery API**.
+  Overloading the existing field would have relabelled every catalog entry
+  (ByteDance, Kling, …) as Higgsfield and broken the picker's labels and the
+  catalog snapshot for no benefit.
+- **Job identity is dual-written.** New generations store `providerId` and
+  `providerRequestId`; Higgsfield jobs also keep writing `hfRequestId` as a
+  compatibility mirror. Reads prefer `providerRequestIdOf()` (neutral field
+  first, legacy field second), so old jobs finalize, cancel and reconcile
+  without a migration or database reset. A partial unique index on
+  `{providerId, providerRequestId}` rejects duplicate adoption; documents
+  without a request id are excluded.
+- **Unknown provider = refuse, not fall back.** A stored generation whose
+  `providerId` is no longer registered throws `UnknownProviderError` and
+  refunds nothing. Silently treating it as Higgsfield could poll or cancel the
+  wrong job and would hide a deployment mistake.
+- **Terminal states stay small.** `status.ts` maps only documented synonyms and
+  treats everything else as non-terminal; an unmapped provider state can never
+  finalize a job. This is deliberately conservative — adding a synonym is a
+  reviewed change, not a guess.
+- **Callback construction moved into the adapter.** `SubmissionRequest` carries
+  the generation id and each adapter builds its own callback URL, so a future
+  provider with signed webhooks or poll-only status does not have to imitate
+  Higgsfield's HMAC token.
+- **Not done on purpose:** no invented second integration, no provider-specific
+  pricing table, no capability discovery endpoint. The contract and fixtures
+  exist; the external contract does not.

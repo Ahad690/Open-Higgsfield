@@ -4,7 +4,11 @@ import type { ObjectId } from "mongodb"
 
 import { NotFoundError, UserFacingError } from "@/lib/errors"
 import { collections } from "@/lib/db/collections"
-import { higgsfield, PlatformError } from "@/lib/higgsfield/client"
+import { PlatformError } from "@/lib/higgsfield/client"
+import {
+  providerForGeneration,
+  providerRequestIdOf,
+} from "@/lib/providers"
 
 import { finalizeGeneration } from "./finalize"
 
@@ -32,9 +36,18 @@ export async function cancelGeneration(
         : "This generation already finished.",
       "NOT_CANCELABLE"
     )
+  const provider = providerForGeneration(gen)
+  const requestId = providerRequestIdOf(gen)
+  if (!requestId || !provider.cancel)
+    throw new UserFacingError(
+      "This generation already finished.",
+      "NOT_CANCELABLE"
+    )
   try {
-    await higgsfield().cancel(gen.hfRequestId!)
+    await provider.cancel(requestId)
   } catch (caught) {
+    // HTTP 400 is this API's "already processing" signal. A provider-neutral
+    // error taxonomy is future work; see docs/PROVIDER_ARCHITECTURE.md.
     if (caught instanceof PlatformError && caught.status === 400) {
       await generations.updateOne(
         { _id: gen._id, status: "queued" },

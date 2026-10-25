@@ -1,3 +1,5 @@
+import type { ProviderId } from "@/lib/providers/types"
+
 export type Surface = "image" | "video" | "audio"
 export type MediaKind = "image" | "video" | "audio"
 export type MediaRole =
@@ -91,6 +93,11 @@ export type ModelEntry = {
   family: string
   /** Company behind the model, e.g. "ByteDance". */
   provider: string
+  /**
+   * API that delivers the model (`lib/providers`). Defaults to the primary
+   * provider; this is *not* the model's producer — keep `provider` for that.
+   */
+  apiProvider?: ProviderId
   /** One line for the picker card. */
   description: string
   /** Short "best for" phrase shown on the model card. */

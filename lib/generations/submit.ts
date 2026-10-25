@@ -5,7 +5,7 @@ import { z } from "zod"
 
 import { findModel, parseSettings } from "@/generation/catalog"
 import { groupMedia, inferInputMode } from "@/generation/catalog/media-inputs"
-import type { GenerationPlane } from "@/generation/catalog/types"
+import type { GenerationPlane, ModelEntry } from "@/generation/catalog/types"
 import { toPlatform } from "@/generation/to-platform"
 import { UserFacingError } from "@/lib/errors"
 import type { SessionUser } from "@/lib/auth/session"
@@ -32,12 +32,15 @@ import {
 import { env } from "@/lib/env"
 import {
   AmbiguousSubmitError,
-  higgsfield,
   PlatformError,
   PlatformNotConfiguredError,
 } from "@/lib/higgsfield/client"
 import { describePlatformError } from "@/lib/higgsfield/errors"
-import { webhookUrlFor } from "@/lib/higgsfield/webhook"
+import {
+  providerFor,
+  providerForGeneration,
+  type GenerationProvider,
+} from "@/lib/providers"
 import { enforceRateLimit, LIMITS } from "@/lib/rate-limit"
 
 import { resolveOwnedMedia } from "./media"
@@ -80,20 +83,23 @@ const FLAG_DRIFT = 1.01
 /**
  * Compare the documented estimate endpoint with the USD basis our price was
  * computed from. Small drift flags admin; large drift refuses the submit.
+ * The estimate call is optional: providers without one keep the table price.
  */
 async function guardPrice(
+  provider: GenerationProvider,
   modelId: string,
   path: string,
   body: Record<string, unknown>,
   ourUsd: number
 ): Promise<void> {
   const value = env()
-  if (!value.HF_PRICE_GUARD || !value.HF_CREDENTIALS) return
+  const estimate = provider.estimate?.bind(provider)
+  if (!value.HF_PRICE_GUARD || !value.HF_CREDENTIALS || !estimate) return
   let liveUsd: number
   try {
     liveUsd = (
       await Promise.race([
-        higgsfield().estimate(path, body),
+        estimate(path, body),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("estimate timeout")), 1_500)
         ),
@@ -132,6 +138,25 @@ async function guardPrice(
   )
 }
 
+/**
+ * The delivery API for a model. An entry naming an unregistered provider is a
+ * configuration error: the user gets a neutral message, the detail is logged.
+ */
+function resolveProvider(model: ModelEntry): GenerationProvider {
+  try {
+    return providerFor(model)
+  } catch (caught) {
+    console.error(
+      `[submit] no provider for ${model.id}:`,
+      caught instanceof Error ? caught.message : caught
+    )
+    throw new UserFacingError(
+      "This model isn't available right now. Pick another model.",
+      "PROVIDER_UNAVAILABLE"
+    )
+  }
+}
+
 export async function submitGeneration(
   user: SessionUser,
   raw: unknown
@@ -154,6 +179,7 @@ export async function submitGeneration(
 
   const model = findModel(input.modelId)
   if (!model) throw new UserFacingError("Unknown model.", "UNKNOWN_MODEL")
+  const provider = resolveProvider(model)
   const pricing = await pricingContext()
   if (pricing.disabled.has(model.id))
     throw new UserFacingError(
@@ -189,7 +215,7 @@ export async function submitGeneration(
     )
   const quote = quoteRequest(request, media, pricing.credits)
   const priceUsd = usdForRequest(usdRule, request, media, quote.units)
-  await guardPrice(model.id, request.path, request.body, priceUsd)
+  await guardPrice(provider, model.id, request.path, request.body, priceUsd)
 
   let projectId: ObjectId | null = null
   if (input.projectId) {
@@ -216,6 +242,7 @@ export async function submitGeneration(
     modelLabel: model.label,
     modelPath: request.path,
     requestBody: request.body,
+    providerId: provider.id,
     prompt: plane.prompt.text,
     settings: plane.settings,
     media: media.map(({ role, kind, displayUrl, name }) => ({
@@ -288,28 +315,35 @@ export async function submitGeneration(
     throw caught
   }
 
-  return toGenerationView(await sendToPlatform(doc))
+  return toGenerationView(await sendToPlatform(doc, provider))
 }
 
 /** Submit a pending generation. Definite failures refund; ambiguous ones wait for the reconciler. */
 export async function sendToPlatform(
-  doc: GenerationDoc
+  doc: GenerationDoc,
+  provider: GenerationProvider = providerForGeneration(doc)
 ): Promise<GenerationDoc> {
   const { generations } = await collections()
   const id = doc._id
   try {
-    const queued = await higgsfield().submit(
-      doc.modelPath,
-      doc.requestBody,
-      webhookUrlFor(id.toHexString())
-    )
+    const queued = await provider.submit({
+      path: doc.modelPath,
+      body: doc.requestBody,
+      generationId: id.toHexString(),
+    })
     const status = queued.status === "in_progress" ? "in_progress" : "queued"
     const updated = await generations.findOneAndUpdate(
       { _id: id, status: "pending_submit" },
       {
         $set: {
           status,
-          hfRequestId: queued.requestId,
+          providerId: queued.providerId,
+          providerRequestId: queued.requestId,
+          // Compatibility mirror: indexes, the admin view and old jobs read
+          // this name. See `providerRequestIdOf`.
+          ...(queued.providerId === "higgsfield"
+            ? { hfRequestId: queued.requestId }
+            : {}),
           submittedAt: new Date(),
           updatedAt: new Date(),
         },

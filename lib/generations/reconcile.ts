@@ -4,7 +4,10 @@ import { refundGeneration } from "@/lib/billing/ledger"
 import { grantMonthlyAllowances } from "@/lib/billing/subscriptions"
 import { collections, IN_FLIGHT, TERMINAL } from "@/lib/db/collections"
 import { env } from "@/lib/env"
-import { higgsfield } from "@/lib/higgsfield/client"
+import {
+  providerForGeneration,
+  providerRequestIdOf,
+} from "@/lib/providers"
 
 import { finalizeGeneration, recopyPlatformOutputs } from "./finalize"
 
@@ -59,11 +62,15 @@ export async function reconcile(
     }
   }
 
-  // 1. Submits that never confirmed.
+  // 1. Submits that never confirmed. `$nor` covers both the neutral field and
+  // the legacy Higgsfield name, so a job that recorded either is left alone.
   const unconfirmed = await generations
     .find({
       status: "pending_submit",
-      hfRequestId: { $exists: false },
+      $nor: [
+        { providerRequestId: { $exists: true } },
+        { hfRequestId: { $exists: true } },
+      ],
       createdAt: { $lt: new Date(now.getTime() - pendingMs) },
     })
     .limit(BATCH)
@@ -74,7 +81,10 @@ export async function reconcile(
         {
           _id: gen._id,
           status: "pending_submit",
-          hfRequestId: { $exists: false },
+          $nor: [
+            { providerRequestId: { $exists: true } },
+            { hfRequestId: { $exists: true } },
+          ],
         },
         {
           $set: {
@@ -105,10 +115,10 @@ export async function reconcile(
     await guard(async () => {
       // One last look: it may have finished without a webhook.
       if ((await finalizeGeneration(gen._id)) !== "in_flight") return
-      if (gen.status === "queued" && gen.hfRequestId)
-        await higgsfield()
-          .cancel(gen.hfRequestId)
-          .catch(() => undefined)
+      const provider = providerForGeneration(gen)
+      const requestId = providerRequestIdOf(gen)
+      if (gen.status === "queued" && requestId && provider.cancel)
+        await provider.cancel(requestId).catch(() => undefined)
       const result = await generations.updateOne(
         { _id: gen._id, status: { $in: ["queued", "in_progress"] } },
         {
@@ -132,7 +142,10 @@ export async function reconcile(
   const stale = await generations
     .find({
       status: { $in: [...IN_FLIGHT] },
-      hfRequestId: { $exists: true },
+      $or: [
+        { providerRequestId: { $exists: true } },
+        { hfRequestId: { $exists: true } },
+      ],
       updatedAt: { $lt: new Date(now.getTime() - staleMs) },
     })
     .sort({ updatedAt: 1 })

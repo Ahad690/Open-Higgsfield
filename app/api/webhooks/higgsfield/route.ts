@@ -8,10 +8,11 @@ import { finalizeGeneration } from "@/lib/generations/finalize"
 import { asRecord } from "@/lib/higgsfield/client"
 import { verifyWebhookToken } from "@/lib/higgsfield/webhook"
 import { json } from "@/lib/http"
+import { providerRequestIdOf } from "@/lib/providers"
+import { TERMINAL_STATUSES } from "@/lib/providers/status"
 
 export const runtime = "nodejs"
 
-const TERMINAL = new Set(["completed", "failed", "nsfw", "canceled"])
 const REQUEST_ID = /^[a-f0-9-]{8,64}$/i
 
 /**
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     typeof requestId !== "string" ||
     !REQUEST_ID.test(requestId) ||
     typeof status !== "string" ||
-    !TERMINAL.has(status)
+    !TERMINAL_STATUSES.has(status)
   )
     return json({ error: "Invalid webhook envelope" }, 400)
 
@@ -57,14 +58,32 @@ export async function POST(request: Request) {
 
   const gen = await generations.findOne({ _id: generationId })
   if (!gen) return json({ ok: true, ignored: "unknown generation" })
-  if (gen.hfRequestId && gen.hfRequestId !== requestId)
+  // Only this API's jobs may be settled by this API's callbacks.
+  if (gen.providerId && gen.providerId !== "higgsfield")
+    return json({ ok: true, ignored: "provider mismatch" })
+  const storedRequestId = providerRequestIdOf(gen)
+  if (storedRequestId && storedRequestId !== requestId)
     return json({ ok: true, ignored: "request mismatch" })
 
-  if (!gen.hfRequestId) {
+  if (!storedRequestId) {
     // The submit response never arrived (ambiguous); adopt the request now.
+    // Both names are written so the legacy index and the neutral field agree.
     await generations.updateOne(
-      { _id: gen._id, hfRequestId: { $exists: false } },
-      { $set: { hfRequestId: requestId, updatedAt: new Date() } }
+      {
+        _id: gen._id,
+        $nor: [
+          { providerRequestId: { $exists: true } },
+          { hfRequestId: { $exists: true } },
+        ],
+      },
+      {
+        $set: {
+          providerId: "higgsfield",
+          providerRequestId: requestId,
+          hfRequestId: requestId,
+          updatedAt: new Date(),
+        },
+      }
     )
   }
   if (
@@ -81,6 +100,7 @@ export async function POST(request: Request) {
       {
         $set: {
           status: "in_progress",
+          providerRequestId: requestId,
           hfRequestId: requestId,
           updatedAt: new Date(),
         },

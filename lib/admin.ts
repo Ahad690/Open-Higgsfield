@@ -10,6 +10,7 @@ import { objectIdOrNotFound } from "@/lib/ids"
 import { NotFoundError } from "@/lib/errors"
 import { grantCredits, totalCredits } from "@/lib/billing/ledger"
 import { invalidatePricing, pricingContext } from "@/lib/billing/pricing"
+import { providerRequestIdOf } from "@/lib/providers"
 import type { PriceRule } from "@/lib/billing/pricing-types"
 import {
   collections,
@@ -156,25 +157,29 @@ export async function listAllGenerations(input: {
     .toArray()
   const emails = new Map(owners.map((u) => [u._id.toHexString(), u.email]))
   return {
-    items: page.map((doc) => ({
-      id: doc._id.toHexString(),
-      userEmail: emails.get(doc.userId.toHexString()) ?? "(deleted)",
-      modelId: doc.modelId,
-      modelPath: doc.modelPath,
-      status: doc.status,
-      cost: doc.cost,
-      refunded: doc.refunded ?? 0,
-      priceUsd: doc.priceUsd,
-      ...(doc.hfRequestId ? { hfRequestId: doc.hfRequestId } : {}),
-      ...(doc.error ? { error: doc.error } : {}),
-      prompt: doc.prompt.slice(0, 160),
-      isPublic: doc.isPublic,
-      ...(doc.outputs[0]
-        ? { thumb: doc.outputs[0].url, kind: doc.outputs[0].kind }
-        : {}),
-      createdAt: doc.createdAt.getTime(),
-      ...(doc.finishedAt ? { finishedAt: doc.finishedAt.getTime() } : {}),
-    })),
+    items: page.map((doc) => {
+      // Field name kept for the admin table; the value is provider-neutral.
+      const requestId = providerRequestIdOf(doc)
+      return {
+        id: doc._id.toHexString(),
+        userEmail: emails.get(doc.userId.toHexString()) ?? "(deleted)",
+        modelId: doc.modelId,
+        modelPath: doc.modelPath,
+        status: doc.status,
+        cost: doc.cost,
+        refunded: doc.refunded ?? 0,
+        priceUsd: doc.priceUsd,
+        ...(requestId ? { hfRequestId: requestId } : {}),
+        ...(doc.error ? { error: doc.error } : {}),
+        prompt: doc.prompt.slice(0, 160),
+        isPublic: doc.isPublic,
+        ...(doc.outputs[0]
+          ? { thumb: doc.outputs[0].url, kind: doc.outputs[0].kind }
+          : {}),
+        createdAt: doc.createdAt.getTime(),
+        ...(doc.finishedAt ? { finishedAt: doc.finishedAt.getTime() } : {}),
+      }
+    }),
     nextCursor:
       docs.length > 50 ? (page.at(-1)?._id.toHexString() ?? null) : null,
   }
