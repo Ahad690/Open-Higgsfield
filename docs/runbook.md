@@ -40,6 +40,42 @@ retried automatically. After 2 minutes the reconciler marks them failed and
 refunds. If a webhook for that generation arrives later, the result is attached
 and delivered free.
 
+## Local mock and protected mode
+
+Start the offline stack with `pnpm mock:higgsfield` (127.0.0.1:4010 by default)
+and `HF_API_BASE_URL=http://127.0.0.1:4010`, `HF_CREDENTIALS=mock:mock`,
+`E2E_TEST_MODE=true`. Prompt markers select a deterministic response:
+
+| Marker | Response |
+|---|---|
+| `[reject]` | 422 before the job exists |
+| `[429]` | 429, `Retry-After: 1`; client retries then surfaces the error |
+| `[500]` | 500; retried by the safe/retryable submit policy |
+| `[503]` | 503, `Retry-After: 1` |
+| `[timeout]` | job accepted, HTTP response delayed; submit is ambiguous |
+| `[fail]`, `[nsfw]`, `[slow]` | existing terminal and timing fixtures |
+
+The mock binds only to loopback. `MOCK_HF_HOST` must be `localhost`, `127.0.0.0/8`
+or `::1`; `MOCK_HF_PORT` must be an integer from 1 to 65535 (or 0 in tests).
+Wildcard, LAN and public binds are refused before `listen`.
+
+Image outputs are generated labelled PNGs; video outputs are the checked-in
+`scripts/mock-media/mock-output.mp4`. Both say `MOCK OUTPUT`/`NOT AI-GENERATED`.
+The mock never serves `public/media` samples. Regenerate the MP4 with
+`pnpm mock:media` (ffmpeg is a developer tool, not a deployment dependency).
+
+Protected mode fails closed:
+
+* `E2E_TEST_MODE=true` requires an explicit loopback `HF_API_BASE_URL`; missing,
+  malformed, credential-bearing, path/query-bearing or non-loopback URLs abort
+  startup with an `EnvError`.
+* The provider client validates again before every request and uses
+  `redirect: "error"`, so a loopback service cannot redirect to a public host.
+* There is no fallback to the live API. If the mock is down, submit/status
+  errors surface normally; the job stays pending and the reconciler handles it.
+* `E2E_TEST_MODE` is rejected when `NODE_ENV=production`. E2E runs against a
+  non-production local stack only; production never enables test hooks.
+
 ### Platform errors in logs
 
 | Log | Meaning | Action |
@@ -119,4 +155,4 @@ item from Community and blocks re-publishing; **Dismiss** closes the reports.
 - [ ] R2 CORS allows GET from the site origin.
 - [ ] Legal pages replaced (`/legal/*`).
 - [ ] `higgsfield-ai/app-templates` licence re-checked.
-- [ ] `pnpm test:e2e` green against the preview deploy (`E2E_TEST_MODE` on the preview only).
+- [ ] `pnpm test:e2e` green against the local offline stack. Production and other `NODE_ENV=production` deployments keep `E2E_TEST_MODE` off; the app refuses to boot otherwise.

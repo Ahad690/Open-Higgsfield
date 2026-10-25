@@ -52,6 +52,16 @@ export async function ensureIndexes(database: Db): Promise<string[]> {
     { hfRequestId: 1 },
     { unique: true, sparse: true }
   )
+  // Provider-neutral job identity. Partial so pending jobs (no request id yet)
+  // and legacy jobs never collide on a null key.
+  await add(
+    "generations.provider_request",
+    { providerId: 1, providerRequestId: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { providerRequestId: { $exists: true } },
+    }
+  )
   await add("generations.submit", { userId: 1, submitKey: 1 }, { unique: true })
   await add("generations.inflight", { status: 1, updatedAt: 1 })
   await add("generations.public", { isPublic: 1, publishedAt: -1 })

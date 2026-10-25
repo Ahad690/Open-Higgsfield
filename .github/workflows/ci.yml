@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Typecheck, lint, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  e2e:
+    name: Offline E2E (mock provider, local MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # Dummy local-only values. No real provider, Stripe, Resend or R2 key is
+      # used; the app runs against scripts/mock-higgsfield.ts and local media.
+      - name: Write local environment
+        run: |
+          cat > .env.local <<'EOF'
+          APP_URL=http://localhost:3000
+          AUTH_URL=http://localhost:3000
+          AUTH_SECRET=github-actions-e2e-only-not-a-real-secret-0123456789
+          AUTH_RESEND_KEY=
+          NEXT_PUBLIC_BRAND_NAME=Vireo
+          EMAIL_FROM="Vireo <login@vireo.studio>"
+          SUPPORT_EMAIL=support@vireo.studio
+          SIGNUP_BONUS_CREDITS=200
+          ADMIN_EMAILS=
+          MONGODB_URI=mongodb://127.0.0.1:27027/?replicaSet=vireo
+          MONGODB_DB=vireo-e2e
+          HF_API_BASE_URL=http://127.0.0.1:4010
+          HF_CREDENTIALS=mock:mock
+          HF_WEBHOOK_SECRET=github-actions-e2e-webhook-not-a-real-secret
+          HF_WEBHOOK_BASE_URL=
+          HF_PRICE_GUARD=false
+          RUN_TIMEOUT_MINUTES=30
+          CREDIT_USD_VALUE=0.01
+          CREDIT_MARKUP=2.0
+          STRIPE_SECRET_KEY=
+          STRIPE_WEBHOOK_SECRET=
+          E2E_TEST_MODE=true
+          E2E_SECRET=
+          CRON_SECRET=github-actions-e2e-cron-not-a-real-secret
+          EOF
+
+      - name: Run offline stack and Playwright
+        run: |
+          set -euo pipefail
+          pnpm db:dev > "$RUNNER_TEMP/db.log" 2>&1 &
+          DB_PID=$!
+          cleanup() {
+            kill "$DB_PID" "${MOCK_PID:-}" "${DEV_PID:-}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          echo "waiting for MongoDB"
+          for _ in $(seq 1 120); do
+            if (echo > /dev/tcp/127.0.0.1/27027) 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if ! (echo > /dev/tcp/127.0.0.1/27027) 2>/dev/null; then
+            echo "MongoDB did not start"; cat "$RUNNER_TEMP/db.log"; exit 1
+          fi
+          pnpm db:init
+
+          pnpm mock:higgsfield > "$RUNNER_TEMP/mock.log" 2>&1 &
+          MOCK_PID=$!
+          pnpm dev > "$RUNNER_TEMP/dev.log" 2>&1 &
+          DEV_PID=$!
+
+          echo "waiting for the app"
+          for _ in $(seq 1 120); do
+            if curl -sf http://localhost:3000/ > /dev/null; then break; fi
+            sleep 2
+          done
+          if ! curl -sf http://localhost:3000/ > /dev/null; then
+            echo "app did not start"; tail -n 120 "$RUNNER_TEMP/dev.log"; exit 1
+          fi
+
+          pnpm test:e2e
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diagnostics
+          path: |
+            ${{ runner.temp }}/db.log
+            ${{ runner.temp }}/mock.log
+            ${{ runner.temp }}/dev.log
+            test-results
+            playwright-report
+          if-no-files-found: ignore

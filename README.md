@@ -33,7 +33,7 @@ In three terminals:
 
 ```bash
 pnpm db:dev            # MongoDB replica set on :27027 (data in .data/mongo)
-pnpm mock:higgsfield   # mock platform on :4010 ("[fail]", "[nsfw]", "[slow]" in a prompt steer outcomes)
+pnpm mock:higgsfield   # mock platform on 127.0.0.1:4010 (see "Mock provider" below)
 pnpm dev               # http://localhost:3000
 ```
 
@@ -45,10 +45,42 @@ pnpm db:init --admin=you@example.com   # indexes + Effects presets (+ admin role
 
 For offline development set in `.env.local`:
 `MONGODB_URI=mongodb://127.0.0.1:27027/?replicaSet=vireo`,
-`HF_API_BASE_URL=http://localhost:4010`, `HF_CREDENTIALS=mock:mock`,
+`HF_API_BASE_URL=http://127.0.0.1:4010`, `HF_CREDENTIALS=mock:mock`,
 `SIGNUP_BONUS_CREDITS=200`, `E2E_TEST_MODE=true`. Magic links are printed to the
 dev-server log (no Resend key needed); media is stored under `.data/media`; the
 reconciler runs in-process every 5 s because there is no cron or webhook tunnel.
+
+### Mock provider
+
+`pnpm mock:higgsfield` binds **127.0.0.1:4010** by default and refuses a
+wildcard, LAN or public host (`MOCK_HF_HOST`, `MOCK_HF_PORT`). It speaks the
+documented Higgsfield request shapes with dummy credentials `mock:mock` and
+never calls a model.
+
+Put one of these markers in the prompt to select a deterministic outcome:
+
+| Marker | Outcome |
+|---|---|
+| none | queued → completed (images or video) |
+| `[fail]` | completed poll → `failed` (refund path) |
+| `[nsfw]` | completed poll → `nsfw` (refund path) |
+| `[slow]` | stays queued for 20 s, completes at 26 s |
+| `[reject]` | HTTP 422 before a job exists |
+| `[429]` | HTTP 429 with `Retry-After: 1` |
+| `[500]` | HTTP 500 |
+| `[503]` | HTTP 503 with `Retry-After: 1` |
+| `[timeout]` | accepts the job, then delays the response (ambiguous submit) |
+
+Images are generated at request time as visibly labelled PNGs (`MOCK OUTPUT`,
+`NOT AI-GENERATED`, request id, model, timestamp). Video models return the
+checked-in, equally labelled `scripts/mock-media/mock-output.mp4`. Neither path
+serves `public/media` or another repository sample. `pnpm mock:media`
+regenerates the MP4 when ffmpeg is available; it is not a runtime dependency.
+
+When `E2E_TEST_MODE=true`, `HF_API_BASE_URL` is required and must be loopback;
+the client re-checks at every request and refuses redirects, so a bad inherited
+environment cannot spend money. `E2E_TEST_MODE` is rejected when
+`NODE_ENV=production`. See `docs/runbook.md` → Local mock.
 
 ## Real services
 
@@ -97,7 +129,8 @@ submit against the live estimate (`HF_PRICE_GUARD`). Details:
 | `pnpm test:e2e` | Playwright against a running stack (`E2E_BASE_URL` for a preview deploy) |
 | `pnpm models` | Regenerate `generation/catalog/models.generated.ts` |
 | `pnpm db:dev` / `pnpm db:init` | Local MongoDB / indexes + preset seed |
-| `pnpm mock:higgsfield` | Local mock of the Higgsfield REST API |
+| `pnpm mock:higgsfield` | Local mock of the Higgsfield REST API (loopback only) |
+| `pnpm mock:media` | Regenerate the labelled mock MP4 (needs ffmpeg) |
 | `pnpm pricing:sync` | Derive prices from the estimate endpoint |
 
 ## Adding a model

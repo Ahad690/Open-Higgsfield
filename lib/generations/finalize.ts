@@ -10,12 +10,15 @@ import {
   type GenerationDoc,
   type GenerationOutput,
 } from "@/lib/db/collections"
-import { higgsfield } from "@/lib/higgsfield/client"
 import { describeTerminal } from "@/lib/higgsfield/errors"
+import type { PlatformArtifact } from "@/lib/higgsfield/types"
 import {
-  PLATFORM_TERMINAL,
-  type PlatformArtifact,
-} from "@/lib/higgsfield/types"
+  providerForGeneration,
+  providerRequestIdOf,
+  type GenerationProvider,
+} from "@/lib/providers"
+import { isTerminalStatus } from "@/lib/providers/status"
+import type { ProviderJobStatus } from "@/lib/providers/types"
 import { copyFromUrl } from "@/lib/storage"
 
 /**
@@ -42,24 +45,29 @@ export type FinalizeOutcome =
   | "refunded"
   | "copy_retry"
 
-type Deps = { status: typeof higgsfieldStatus; copy: typeof copyFromUrl }
+type Deps = {
+  status: (requestId: string) => Promise<ProviderJobStatus>
+  copy: typeof copyFromUrl
+}
 
-async function higgsfieldStatus(requestId: string) {
-  return higgsfield().status(requestId)
+function providerStatus(provider: GenerationProvider) {
+  return (requestId: string) => provider.status(requestId)
 }
 
 export async function finalizeGeneration(
   generationId: ObjectId,
-  deps: Deps = { status: higgsfieldStatus, copy: copyFromUrl }
+  deps: Partial<Deps> = {}
 ): Promise<FinalizeOutcome> {
   const { generations } = await collections()
   const gen = await generations.findOne({ _id: generationId })
   if (!gen) return "missing"
   if (!IN_FLIGHT.includes(gen.status)) return "already_terminal"
-  if (!gen.hfRequestId) return "not_submitted"
+  const requestId = providerRequestIdOf(gen)
+  if (!requestId) return "not_submitted"
 
-  const status = await deps.status(gen.hfRequestId)
-  if (!PLATFORM_TERMINAL.has(status.status)) {
+  const provider = providerForGeneration(gen)
+  const status = await (deps.status ?? providerStatus(provider))(requestId)
+  if (!isTerminalStatus(status.status)) {
     const next = status.status === "in_progress" ? "in_progress" : gen.status
     await generations.updateOne(
       { _id: gen._id, status: { $in: [...IN_FLIGHT] } },
@@ -88,7 +96,7 @@ export async function finalizeGeneration(
 
   const media = status.artifacts.filter((artifact) => artifact.kind !== "file")
   if (status.status === "completed" && media.length > 0) {
-    const outputs = await copyOutputs(leased, media, deps.copy)
+    const outputs = await copyOutputs(leased, media, deps.copy ?? copyFromUrl)
     if (!outputs) {
       await generations.updateOne(
         { _id: gen._id },
@@ -117,10 +125,9 @@ export async function finalizeGeneration(
     return "completed"
   }
 
+  // A run that "completed" without media is a failure for us, never a charge.
   const terminal =
-    status.status === "completed"
-      ? "failed"
-      : (status.status as GenerationDoc["status"])
+    status.status === "completed" ? "failed" : status.status
   const message =
     status.status === "completed"
       ? describeTerminal("failed", "The model finished without returning media")

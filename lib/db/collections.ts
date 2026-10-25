@@ -5,6 +5,7 @@ import type { ObjectId } from "mongodb"
 import type { MediaKind, MediaRole, Surface } from "@/generation/catalog/types"
 import type { PlanId, BillingInterval } from "@/lib/billing/plans"
 import type { PriceRule } from "@/lib/billing/pricing-types"
+import type { ProviderId } from "@/lib/providers/types"
 
 import { db } from "./mongo"
 
@@ -97,6 +98,18 @@ export interface GenerationDoc {
   settings: Record<string, unknown>
   media: GenerationMedia[]
   status: GenerationStatus
+  /** Delivery API that accepted the job (absent on jobs created before it). */
+  providerId?: ProviderId
+  /**
+   * Job id from that provider. Canonical: read through `providerRequestIdOf`
+   * (`lib/providers`) so documents written before this field still resolve.
+   */
+  providerRequestId?: string
+  /**
+   * Legacy Higgsfield-era name for `providerRequestId`. Still written by the
+   * Higgsfield adapter as a compatibility mirror, because stored jobs, the
+   * unique index and the admin view all predate the provider layer.
+   */
   hfRequestId?: string
   /** Credits charged, and how they split across buckets. */
   cost: number

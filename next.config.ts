@@ -30,7 +30,13 @@ function contentSecurityPolicy(): string {
     origin(process.env.R2_PUBLIC_BASE_URL),
     "https://*.higgsfield.ai",
     "https://*.cloudfront.net",
-    ...(isDev ? ["http://localhost:4010"] : []),
+    ...(isDev
+      ? [
+          "http://localhost:4010",
+          "http://127.0.0.1:4010",
+          "http://[::1]:4010",
+        ]
+      : []),
   ].filter(Boolean)
   const connect =
     process.env.CSP_CONNECT_SRC ??

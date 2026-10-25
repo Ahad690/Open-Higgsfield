@@ -5,6 +5,10 @@ import {
   requireUploadContentType,
 } from "@/generation/upload-contract"
 import { env } from "@/lib/env"
+import {
+  isLoopbackHostname,
+  validateProviderDestination,
+} from "@/lib/providers/destination"
 
 import type {
   Estimate,
@@ -75,6 +79,12 @@ export type ClientOptions = {
   /** Per-attempt timeout. */
   timeoutMs?: number
   sleep?: (ms: number) => Promise<void>
+  /**
+   * Explicit E2E/test mode. When true, construction and every request reject a
+   * non-loopback destination. `higgsfield()` passes this from env; the default
+   * is false so ordinary development and tests keep their existing behaviour.
+   */
+  protectedMode?: boolean
 }
 
 const SAFE_RETRY = new Set([429, 500, 502, 503, 504])
@@ -85,7 +95,11 @@ export function isModelPath(path: string): boolean {
 }
 
 export function createHiggsfieldClient(options: ClientOptions) {
-  const baseUrl = options.baseUrl.replace(/\/$/, "")
+  const protectedMode = options.protectedMode ?? false
+  const destination = validateProviderDestination(options.baseUrl, {
+    protectedMode,
+  })
+  const baseUrl = destination.origin
   const fetchImpl = options.fetch ?? fetch
   const timeoutMs = options.timeoutMs ?? 20_000
   const sleep =
@@ -99,10 +113,16 @@ export function createHiggsfieldClient(options: ClientOptions) {
     path: string,
     body?: Record<string, unknown>
   ): Promise<{ status: number; payload: unknown; correlationId?: string }> {
+    // Second, request-boundary assertion: no provider request may leave the
+    // process for a non-loopback origin while protected mode is on, even if a
+    // caller constructed this client before a configuration change.
+    const requestDestination = validateProviderDestination(baseUrl, {
+      protectedMode,
+    })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetchImpl(`${baseUrl}${path}`, {
+      const response = await fetchImpl(`${requestDestination.origin}${path}`, {
         method,
         headers: {
           Authorization: authorization,
@@ -112,6 +132,10 @@ export function createHiggsfieldClient(options: ClientOptions) {
         ...(body ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
         cache: "no-store",
+        // A loopback service must not be able to redirect the request to a
+        // public host. Ordinary mode keeps the platform's normal redirect
+        // behaviour.
+        redirect: protectedMode ? "error" : "follow",
       })
       const payload = await readJson(response)
       return {
@@ -254,6 +278,7 @@ export function higgsfield(): HiggsfieldClient {
   shared = createHiggsfieldClient({
     credentials: value.HF_CREDENTIALS,
     baseUrl: value.HF_API_BASE_URL,
+    protectedMode: value.E2E_TEST_MODE,
   })
   return shared
 }
@@ -280,13 +305,19 @@ function mapQueued(payload: unknown): QueuedRequest {
   }
 }
 
-/** Platform media is HTTPS; the local mock serves http://localhost outside production. */
+/** Platform media is HTTPS; the local mock serves a loopback HTTP origin outside production. */
 export function isAllowedMediaUrl(url: string): boolean {
-  if (url.startsWith("https://")) return true
-  return (
-    process.env.NODE_ENV !== "production" &&
-    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)
-  )
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === "https:") return true
+    return (
+      process.env.NODE_ENV !== "production" &&
+      parsed.protocol === "http:" &&
+      isLoopbackHostname(parsed.hostname)
+    )
+  } catch {
+    return false
+  }
 }
 
 /** Status or webhook payload → artifacts. Handles images/video/audio/audios and extra files. */

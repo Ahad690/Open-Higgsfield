@@ -17,6 +17,10 @@ export function setupEnv(): void {
     AUTH_SECRET: "test-secret-test-secret-test-secret",
     HF_API_BASE_URL: "https://hf.test",
     HF_CREDENTIALS: "key:secret",
+    // Unit tests deliberately use fake external hosts; protected mode would
+    // reject them. Protected-mode behaviour is tested directly in
+    // tests/provider-guard.test.ts.
+    E2E_TEST_MODE: "false",
     HF_WEBHOOK_SECRET: "webhook-secret",
     HF_WEBHOOK_BASE_URL: "https://vireo.test",
     HF_PRICE_GUARD: "false",
@@ -118,6 +122,15 @@ export class FakeHiggsfield {
     []
   /** Next submit response: "ok" | an HTTP status | "network" (ambiguous). */
   nextSubmit: "ok" | number | "network" = "ok"
+  /**
+   * Persistent submit outcome, for retry tests. Unlike `nextSubmit`, this is
+   * not reset after one request, so all retry attempts see the same failure.
+   */
+  submitStatus: number | "network" | "ok" | undefined
+  /** Delay every submit response; used with a short client timeout. */
+  submitDelayMs = 0
+  /** Number of submit attempts observed (accepted or rejected). */
+  attempts = 0
   cdn = new Map<string, { body: Uint8Array<ArrayBuffer>; type: string }>()
   private counter = 0
 
@@ -183,8 +196,25 @@ export class FakeHiggsfield {
       return json(null, 202)
     }
     if (method === "POST") {
-      const outcome = this.nextSubmit
-      this.nextSubmit = "ok"
+      this.attempts++
+      if (this.submitDelayMs > 0) {
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            clearTimeout(timer)
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            )
+          }
+          const timer = setTimeout(() => {
+            init?.signal?.removeEventListener("abort", abort)
+            resolve()
+          }, this.submitDelayMs)
+          if (init?.signal?.aborted) return abort()
+          init?.signal?.addEventListener("abort", abort, { once: true })
+        })
+      }
+      const outcome = this.submitStatus ?? this.nextSubmit
+      if (this.submitStatus === undefined) this.nextSubmit = "ok"
       if (outcome === "network") throw new TypeError("fetch failed")
       if (typeof outcome === "number")
         return json({ detail: "Rejected by test" }, outcome)
@@ -208,7 +238,9 @@ export class FakeHiggsfield {
   }
 }
 
-export async function installFakeHiggsfield(): Promise<FakeHiggsfield> {
+export async function installFakeHiggsfield(options: {
+  timeoutMs?: number
+} = {}): Promise<FakeHiggsfield> {
   const fake = new FakeHiggsfield()
   const { createHiggsfieldClient, setHiggsfieldClientForTests } =
     await import("@/lib/higgsfield/client")
@@ -218,6 +250,7 @@ export async function installFakeHiggsfield(): Promise<FakeHiggsfield> {
       baseUrl: "https://hf.test",
       fetch: fake.fetch,
       sleep: async () => undefined,
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
     })
   )
   return fake

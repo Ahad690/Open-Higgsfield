@@ -18,7 +18,7 @@ import { collections, type UploadDoc } from "@/lib/db/collections"
 import { env } from "@/lib/env"
 import { toUploadView } from "@/lib/generations/serialize"
 import type { UploadView } from "@/lib/generations/view"
-import { higgsfield } from "@/lib/higgsfield/client"
+import { primaryProvider } from "@/lib/providers"
 import { enforceRateLimit, LIMITS } from "@/lib/rate-limit"
 import {
   copyFromUrl,
@@ -87,7 +87,13 @@ export async function createUploadTicket(user: SessionUser, raw: unknown) {
     LIMITS.uploadPerUser.window,
     "Too many uploads. Wait a few minutes and try again."
   )
-  const ticket = await higgsfield().createUpload(contentType)
+  const provider = primaryProvider()
+  if (!provider.createUpload)
+    throw new UserFacingError(
+      "Uploads aren't available right now.",
+      "UPLOAD_UNAVAILABLE"
+    )
+  const ticket = await provider.createUpload(contentType)
   const expires = Date.now() + TICKET_TTL_MS
   return {
     ticket,

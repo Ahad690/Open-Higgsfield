@@ -11,6 +11,10 @@ contract comes from, and why anything is left out.
 - **Precedence:** live docs win for API behavior; the template
   (`higgsfield-ai/app-templates`, commit `b29cdab`) wins for UI patterns. Every
   disagreement is listed in `docs/decisions.md` §"Docs vs template".
+- **Provider fields (2026-10-25):** `provider` is the **model producer**
+  (ByteDance, Kling, Luma, …). The optional `apiProvider` is the **delivery
+  API** and defaults to `higgsfield`; no entry sets it yet. See
+  `docs/PROVIDER_ARCHITECTURE.md` §2 before using either field.
 - **Price source:** the console price list needs an account login we don't have.
   The docs document `POST /estimate/{endpoint}` (billing-and-retention), so
   prices are filled by `pnpm pricing:sync`, which calls the estimate endpoint

@@ -2,6 +2,11 @@ import "server-only"
 
 import { z } from "zod"
 
+import {
+  DEFAULT_PROVIDER_BASE_URL,
+  validateProviderDestination,
+} from "@/lib/providers/destination"
+
 /**
  * Server environment, validated once with zod. Production requires every
  * service; development allows documented fallbacks (magic links in the log,
@@ -47,7 +52,7 @@ const schema = z.object({
   MONGODB_URI: optionalString,
   MONGODB_DB: z.string().default("vireo-studio"),
 
-  HF_API_BASE_URL: z.url().default("https://api.higgsfield.ai"),
+  HF_API_BASE_URL: z.url().optional(),
   HF_CREDENTIALS: optionalString.refine(
     (value) => value === undefined || /^[^:\s]+:[^:\s]+$/.test(value),
     "HF_CREDENTIALS must be key_id:key_secret"
@@ -72,11 +77,54 @@ const schema = z.object({
   R2_ENDPOINT: optionalString,
 
   CRON_SECRET: optionalString,
-  /** Test-only hooks (dev mailbox route). Never honoured on the production deployment. */
+  /**
+   * Test-only hooks (dev mailbox) plus the loopback-only provider guard.
+   * Rejected when NODE_ENV=production and requires an explicit loopback
+   * HF_API_BASE_URL.
+   */
   E2E_TEST_MODE: bool(false),
-  /** Required header value for the test mailbox outside development (preview deploys). */
+  /** Required header for the test mailbox outside local development. */
   E2E_SECRET: optionalString,
 })
+  .superRefine((value, ctx) => {
+    if (value.E2E_TEST_MODE && value.NODE_ENV === "production") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["E2E_TEST_MODE"],
+        message:
+          "E2E_TEST_MODE is not permitted when NODE_ENV=production. Use a non-production local/test stack instead.",
+      })
+      return
+    }
+    if (!value.HF_API_BASE_URL) {
+      if (value.E2E_TEST_MODE)
+        ctx.addIssue({
+          code: "custom",
+          path: ["HF_API_BASE_URL"],
+          message:
+            "E2E_TEST_MODE requires an explicit loopback HF_API_BASE_URL (for example http://127.0.0.1:4010).",
+        })
+      return
+    }
+    try {
+      validateProviderDestination(value.HF_API_BASE_URL, {
+        protectedMode: value.E2E_TEST_MODE,
+      })
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["HF_API_BASE_URL"],
+        message:
+          error instanceof Error
+            ? error.message
+            : "HF_API_BASE_URL is not a permitted provider destination.",
+      })
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    HF_API_BASE_URL: value.HF_API_BASE_URL ?? DEFAULT_PROVIDER_BASE_URL,
+  }))
 
 export type Env = z.infer<typeof schema>
 

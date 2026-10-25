@@ -18,6 +18,7 @@
     "db:init": "tsx --conditions=react-server scripts/db-init.ts",
     "pricing:sync": "tsx --conditions=react-server scripts/sync-pricing.ts",
     "mock:higgsfield": "tsx scripts/mock-higgsfield.ts",
+    "mock:media": "node scripts/generate-mock-media.mjs",
     "email:dev": "email dev --dir emails",
     "db:dev": "tsx scripts/dev-mongo.ts"
   },

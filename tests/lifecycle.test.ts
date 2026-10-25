@@ -161,6 +161,48 @@ describe("submit", () => {
     })
   })
 
+  it.each([429, 500, 503])(
+    "refunds HTTP %i after the client's retry budget, without creating a job",
+    async (statusCode) => {
+      const user = await createUser({ topup: 100 })
+      fake.submitStatus = statusCode
+      const view = await submitGeneration(user, image())
+      expect(view.status).toBe("failed")
+      expect(fake.attempts).toBe(3)
+      expect(fake.submits).toHaveLength(0)
+      expect(await balanceOf(user.objectId)).toEqual({
+        subscription: 0,
+        topup: 100,
+      })
+      const refunds = (await ledgerRows(view.id)).filter(
+        (row) => row.reason === "generation_refund"
+      )
+      expect(refunds).toHaveLength(1)
+    }
+  )
+
+  it("leaves a timeout pending until the reconciler resolves it", async () => {
+    const user = await createUser({ topup: 100 })
+    fake = await installFakeHiggsfield({ timeoutMs: 20 })
+    fake.submitDelayMs = 100
+    const view = await submitGeneration(user, image())
+    expect(view.status).toBe("pending_submit")
+    expect(fake.attempts).toBe(1)
+    expect(fake.submits).toHaveLength(0)
+    expect(await balanceOf(user.objectId)).toEqual({
+      subscription: 0,
+      topup: 82,
+    })
+    const summary = await reconcile({ pendingSeconds: 0 })
+    expect(summary.unconfirmed).toBe(1)
+    const [after] = await generationStatuses(user.objectId, [view.id])
+    expect(after!.status).toBe("failed")
+    expect(await balanceOf(user.objectId)).toEqual({
+      subscription: 0,
+      topup: 100,
+    })
+  })
+
   it("leaves an ambiguous submit pending for the reconciler", async () => {
     const user = await createUser({ topup: 100 })
     fake.nextSubmit = "network"

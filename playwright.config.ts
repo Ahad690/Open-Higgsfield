@@ -2,9 +2,10 @@ import { defineConfig, devices } from "@playwright/test"
 
 /**
  * E2E against a running stack. Locally: `pnpm db:dev`, `pnpm mock:higgsfield`
- * and `pnpm dev` (with E2E_TEST_MODE=true), then `pnpm test:e2e`.
- * Against a preview deploy: E2E_BASE_URL=https://… pnpm test:e2e (the preview
- * must run with E2E_TEST_MODE=true and the mock or a test platform key).
+ * and `pnpm dev` (with E2E_TEST_MODE=true and a loopback HF_API_BASE_URL),
+ * then `pnpm test:e2e`. Protected mode rejects non-production deployments
+ * with an external provider and is itself rejected under NODE_ENV=production,
+ * so preview/production deploys cannot run this stack.
  */
 export default defineConfig({
   testDir: "./e2e",

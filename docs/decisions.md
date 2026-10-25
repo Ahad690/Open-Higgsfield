@@ -217,3 +217,72 @@ image, Plus 6 / 8, Ultra 8 / 12.
   the URL plus re-fetching the status. Revisit if the docs add a signature.
 - **Accessibility:** secondary text is `#9a9b9d` (Quanta's `#828282` fails
   4.5:1 on card surfaces). Lighthouse accessibility: 97+ on the generators.
+
+## Provider abstraction (2026-10-25)
+
+- **One seam, one registered provider.** `lib/providers` defines a small
+  lifecycle contract (submit/status/cancel/estimate/upload, capability flags,
+  canonical terminal states). Higgsfield is the only registered adapter and it
+  delegates to the existing `lib/higgsfield/client.ts`, so every documented
+  path, body and retry rule is unchanged. A second provider is added by
+  implementing the contract and registering it — not by copying the pipeline.
+  See `docs/PROVIDER_ARCHITECTURE.md`.
+- **Two provider concepts, not one field.** `ModelEntry.provider` remains the
+  **model producer**; the new optional `apiProvider` is the **delivery API**.
+  Overloading the existing field would have relabelled every catalog entry
+  (ByteDance, Kling, …) as Higgsfield and broken the picker's labels and the
+  catalog snapshot for no benefit.
+- **Job identity is dual-written.** New generations store `providerId` and
+  `providerRequestId`; Higgsfield jobs also keep writing `hfRequestId` as a
+  compatibility mirror. Reads prefer `providerRequestIdOf()` (neutral field
+  first, legacy field second), so old jobs finalize, cancel and reconcile
+  without a migration or database reset. A partial unique index on
+  `{providerId, providerRequestId}` rejects duplicate adoption; documents
+  without a request id are excluded.
+- **Unknown provider = refuse, not fall back.** A stored generation whose
+  `providerId` is no longer registered throws `UnknownProviderError` and
+  refunds nothing. Silently treating it as Higgsfield could poll or cancel the
+  wrong job and would hide a deployment mistake.
+- **Terminal states stay small.** `status.ts` maps only documented synonyms and
+  treats everything else as non-terminal; an unmapped provider state can never
+  finalize a job. This is deliberately conservative — adding a synonym is a
+  reviewed change, not a guess.
+- **Callback construction moved into the adapter.** `SubmissionRequest` carries
+  the generation id and each adapter builds its own callback URL, so a future
+  provider with signed webhooks or poll-only status does not have to imitate
+  Higgsfield's HMAC token.
+- **Not done on purpose:** no invented second integration, no provider-specific
+  pricing table, no capability discovery endpoint. The contract and fixtures
+  exist; the external contract does not.
+
+## Mock fidelity and protected mode (2026-10-25, M2.1)
+
+- **Mock output is generated, not sampled.** The previous mock served
+  `public/media` JPG/MP4 files as if they were outputs. Images are now encoded
+  at request time as labelled PNG slates (text plus a PNG `tEXt` provenance
+  record); video models return a checked-in, labelled MP4. Both say
+  `MOCK OUTPUT` / `NOT AI-GENERATED`, so a reviewer cannot mistake a fixture for
+  a paid generation. The regeneration script uses ffmpeg but the MP4 is
+  committed; ffmpeg is not a runtime or CI dependency.
+- **Protected mode is `E2E_TEST_MODE`, not `NODE_ENV=test`.** Existing unit
+  tests intentionally exercise fake external hosts and a production-pricing
+  path; treating all `NODE_ENV=test` as protected would either weaken those
+  tests or require rewriting them for no security benefit. `E2E_TEST_MODE` is
+  the explicit flag that also enables the dev mailbox, so it is the right signal
+  for "this stack must not spend money".
+- **Fail closed at two boundaries.** Startup validation catches a bad inherited
+  environment; the client re-validates before every request because a client can
+  outlive a configuration change. Protected mode also sets
+  `redirect: "error"`, closing the loopback-to-public redirect hole.
+- **No DNS-based loopback check.** Only literal loopback hosts are accepted.
+  Resolving a hostname would add a TOCTOU window and turns a policy check into a
+  network operation. A hostname that happens to resolve to 127.0.0.1 is still
+  rejected.
+- **Production rejects the flag.** `NODE_ENV=production` with
+  `E2E_TEST_MODE=true` fails at startup even when the URL is loopback. This
+  removes the previous preview-deploy E2E path; protected E2E is a local/CI
+  (development) stack only. The alternative — allowing a production build to
+  enable test hooks — was the exact accident this guard exists to prevent.
+- **The mock binds loopback only.** `MOCK_HF_HOST` defaults to `127.0.0.1` and
+  wildcard/LAN/public literals are refused before `listen`. A mock that serves
+  fake paid output to the LAN is a confusing and unnecessary exposure.
