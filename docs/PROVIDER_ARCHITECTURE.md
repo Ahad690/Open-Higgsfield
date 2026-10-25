@@ -4,7 +4,8 @@ Status: **implemented for one delivery API (Higgsfield)**, with a
 provider-neutral pipeline around it. This document describes code that exists
 today; anything planned is marked *Not implemented*.
 
-Date: 2026-10-25 · Baseline commit: `133f556` · Changes are in the working tree.
+Date: 2026-10-25 · Baseline commit: `133f556` · Changes are on
+`ci/m2.1-mock-fidelity` (not merged or deployed).
 
 ## 1. Why the layer exists
 

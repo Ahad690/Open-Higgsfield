@@ -1,9 +1,9 @@
 # Implementation status
 
-Snapshot: 2026-10-25 · baseline commit `133f556` · source and docs changes remain
-local for review. A temporary branch, `ci/m2.1-mock-fidelity`, is pushed to
-GitHub only to run the offline checks on GitHub Actions after the local machine
-ran low on RAM. Nothing is merged or deployed.
+Snapshot: 2026-10-25 · baseline commit `133f556` · the work is committed on a
+temporary branch, `ci/m2.1-mock-fidelity`, and pushed to GitHub only to run the
+offline checks on GitHub Actions after the local machine ran low on RAM.
+Nothing is merged or deployed; local `main` remains at `133f556`.
 
 ## 0. Where the code is
 
@@ -148,11 +148,23 @@ used. Logs and Playwright artifacts are uploaded when the E2E job finishes.
 |---|---|
 | Local Windows, 2026-10-25 | **34 passed, 1 failed** in 8.2 min. The failure was `e2e/access.spec.ts:16`, before any provider call, when the project-creation redirect stayed on `/assets`. |
 | GitHub Actions run [40181777304](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40181777304), commit `d66a2b4` | **35 passed** in 1.9 min; the `checks` job passed in 46 s. |
+| GitHub Actions run [40186918479](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40186918479), commit `d3f4346` (M2.1 final) | `checks` **passed in 1m8s**: typecheck, lint, **546 unit tests passed / 100 skipped (646)**, production build and client-secret scan. `e2e` **passed in 2m45s**: **35 passed** in 1.8 min. |
 
-The local failure did not reproduce in CI and its step does not exercise the
-provider layer. It is recorded as a local memory/timing failure, not claimed as
-green locally. The CI run is the authoritative E2E result. The same branch was
-used only for verification; local `main` remains uncommitted.
+The final M2.1 run is authoritative. Two intermediate failures were caught and
+fixed before it:
+
+- run `40186367003`: typecheck rejected assigning `NODE_ENV` directly in the
+  guard test because Next declares it readonly; the test now writes through a
+  typed environment record;
+- run `40186471045`: `checks` passed, but 9 E2E specs failed only on a browser
+  console assertion because Chromium rejects `http://[::1]:4010` as an invalid
+  CSP source. The invalid IPv6 literal was removed; the mock/E2E stack uses
+  `127.0.0.1`, and the limitation is documented in `docs/runbook.md`.
+
+The earlier local 34/35 failure did not reproduce in CI and its step does not
+exercise the provider layer. It is recorded as a local memory/timing failure,
+not claimed as green locally. CI is the authoritative E2E result. The branch is
+used only for verification; local `main` remains at `133f556`.
 
 ### 2.6 Generated files
 
@@ -197,6 +209,23 @@ Changed files:
 | `app/api/webhooks/higgsfield/route.ts` | provider/request-id checks, neutral terminal set, dual-write on adoption |
 | `.github/workflows/ci.yml` | Ubuntu checks + offline E2E; dummy local env, loopback provider only |
 
+M2.1 additions:
+
+- `lib/providers/destination.ts` — pure destination policy: explicit loopback
+  requirement in protected mode, no credentials/path/query/fragment, safe
+  errors; `lib/env.ts` and `lib/higgsfield/client.ts` enforce it at startup and
+  at every request (`redirect: "error"`);
+- `scripts/mock-higgsfield.ts` — exportable server, loopback-only bind,
+  deterministic scenarios, generated artifacts, retry-safe responses;
+- `scripts/mock-artifacts.ts` — PNG encoder with visible labels and provenance
+  `tEXt`; `scripts/mock-scenarios.ts` — marker parser; `scripts/mock-bind.ts` —
+  bind/port validation; `scripts/mock-media/mock-output.mp4` — labelled fixture;
+- `tests/provider-guard.test.ts`, `tests/mock.test.ts`,
+  `tests/mock-bind.test.ts`, plus lifecycle retry/refund/timeout cases;
+- docs: `README.md`, `.env.example`, `docs/runbook.md`, `docs/decisions.md`,
+  `docs/ROADMAP.md`, `docs/CAPABILITY_MATRIX.md`,
+  `docs/PROVIDER_ARCHITECTURE.md`, `docs/SOURCE_AND_LICENSE_AUDIT.md`.
+
 Preserved intentionally: every Higgsfield path/body mapping, pricing and
 ledger flow, webhook HMAC and re-fetch, finalize lease/refund logic, upload
 ticket signing, auth and ownership scoping.
@@ -220,6 +249,19 @@ ticket signing, auth and ownership scoping.
 12. a stored job with an unregistered provider throws and refunds nothing;
 13. the partial unique index rejects a duplicated provider job id while
     allowing many pending jobs.
+
+M2.1 mock/guard coverage (73 focused tests, plus lifecycle additions):
+
+- `tests/provider-guard.test.ts` (32): accepted/rejected destination literals,
+  missing URL, credentials/path/query/fragment, production refusal, client
+  construction and request-boundary checks, no fallback on connection failure;
+- `tests/mock.test.ts` (23): generated PNG signature/dimensions/text metadata,
+  MP4 signature/duration/metadata, marker precedence, all scenario responses,
+  retry counts, rejected-input no-retry, timeout ambiguity, cancel;
+- `tests/mock-bind.test.ts` (18): default loopback host/port, safe hosts,
+  wildcard/LAN/public/URL rejection, IPv4/IPv6 URL formatting, live refusal;
+- `tests/lifecycle.test.ts`: 429/500/503 retry-and-refund, timeout-to-
+  reconciler, and finalize refund behaviour (25 tests in the file).
 
 ## 5. Known limitations and blockers
 
@@ -256,10 +298,10 @@ ticket signing, auth and ownership scoping.
 | Requirement | Status |
 |---|---|
 | Baseline inspected and results recorded | yes, §1–2 |
-| Substantive tested improvement | yes, provider layer + 13 tests |
-| Core functionality not knowingly broken | yes, all pre-existing unit/build checks pass; E2E 35/35 in CI; one local E2E environment failure is recorded, not hidden |
+| Substantive tested improvement | yes, provider layer + 13 tests; M2.1 adds 73 focused tests and lifecycle coverage |
+| Core functionality not knowingly broken | yes, 546 unit tests and the production build pass in CI; E2E 35/35 in CI; one earlier local E2E environment failure is recorded, not hidden |
 | Existing Higgsfield integration preserved | yes, adapter delegates to the existing client |
-| Offline/mock usable | yes, smoke-tested §2.4 and full E2E in CI §2.5 |
+| Offline/mock usable | yes: labelled PNG/MP4 artifacts, deterministic markers, loopback-only bind; focused tests §2.4 and full E2E in CI §2.5 |
 | Billing/auth/ownership intact | untouched; verified by existing tests and diff review |
-| Docs describe real code | yes, five documents under `docs/` |
+| Docs describe real code | yes, eight documents under `docs/` plus README/.env.example |
 | Remaining work prioritised | `docs/ROADMAP.md` |

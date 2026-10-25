@@ -1,9 +1,10 @@
 # Roadmap
 
-Phased from the code that exists at `133f556` plus the provider slice in the
-working tree. Each milestone states what must already be true, what changes,
-how it is verified, and what it costs. This is not a greenfield plan: the
-catalog, billing ledger, auth, storage and lifecycle stay where they are.
+Phased from the code that exists at `133f556` plus the provider/M2.1 mock slice
+on `ci/m2.1-mock-fidelity`. Each milestone states what must already be true,
+what changes, how it is verified, and what it costs. This is not a greenfield
+plan: the catalog, billing ledger, auth, storage and lifecycle stay where they
+are.
 
 Status at a glance:
 
@@ -11,7 +12,7 @@ Status at a glance:
 |---|---|---|---|
 | M0 | Baseline, audit, trust | **done** | — |
 | M1 | Provider seam around Higgsfield | **done** | — |
-| M2 | Offline fidelity, deterministic media, provenance | next | no credentials needed |
+| M2 | Offline fidelity, deterministic media, provenance | **M2.1 done; rest next** | no credentials needed |
 | M3 | Second delivery provider | **blocked** | verified contract + licence + pricing |
 | M4 | Editing, captions, export | after M2 media base | local CPU only |
 | M5 | Characters, workflows, moderation/consent | after M3/M4 evidence | legal/product decisions |

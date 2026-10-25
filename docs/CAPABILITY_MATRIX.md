@@ -1,8 +1,8 @@
 # Capability matrix
 
-Actual state of the code at `133f556` plus the provider slice in the working
-tree. Milestones are defined in `docs/ROADMAP.md`; `M0` = baseline, `M1` =
-provider slice (this pass).
+Actual state of the code at `133f556` plus the provider and M2.1 mock slices on
+`ci/m2.1-mock-fidelity`. Milestones are defined in `docs/ROADMAP.md`; `M0` =
+baseline, `M1` = provider slice, `M2.1` = honest mock/protected mode.
 
 Legend: **Hosted?** = needs a paid/hosted model API · **Det.?** = can be built
 deterministically with ordinary software (no model inference) · **Tests** =
