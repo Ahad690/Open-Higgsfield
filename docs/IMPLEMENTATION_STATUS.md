@@ -1,7 +1,9 @@
 # Implementation status
 
-Snapshot: 2026-10-25 · baseline commit `133f556` · all changes left uncommitted
-in the working tree for review.
+Snapshot: 2026-10-25 · baseline commit `133f556` · source and docs changes remain
+uncommitted in the local working tree for review. A temporary branch,
+`ci/provider-abstraction`, was pushed to GitHub only to run the offline checks on
+GitHub Actions after the local machine ran low on RAM. Nothing was deployed.
 
 ## 0. Where the code is
 
@@ -88,7 +90,7 @@ No test was skipped or altered to make the baseline look green.
 | `pnpm test` | 6 files: **469 passed, 100 skipped** (15.2 s). This is the 456 pre-existing tests plus 13 new provider tests. |
 | `pnpm test` (first full run, concurrently with the baseline suite) | 468 passed, 1 failed — the same pre-existing webhook timing flake. Passed on a clean rerun. |
 | `pnpm build` | **pass**, exit 0. `next build` emitted 30 static/dynamic routes and the post-build scan printed `[secrets] client bundle clean`. The build log notes `pricing`/`community` unavailable because `MONGODB_URI` is not set, which is expected without a database and does not fail the build. |
-| `pnpm test:e2e` | **not run.** Playwright needs a running stack (`pnpm db:dev`, `pnpm mock:higgsfield`, `pnpm dev` with `E2E_TEST_MODE=true`) and a Chrome channel. No `.env.local` and no running services were present; creating live local state was out of scope for this pass. |
+| `pnpm test:e2e` (local) | **34 passed, 1 failed** (8.2 min) against the local mock stack. The failure was `e2e/access.spec.ts:16`: after creating a project the page stayed on `/assets` instead of `/projects/:id`. The same suite passed **35/35** in GitHub Actions; see §2.5. |
 
 These four commands were run again after the final source and test edits, with
 the same results (typecheck 0, lint 0, 469 passed / 100 skipped, build 0).
@@ -105,7 +107,31 @@ Started `npx tsx scripts/mock-higgsfield.ts` with a dummy
 The mock process was stopped afterwards. This proves the documented offline
 development path still works after the refactor.
 
-### 2.5 Generated files
+### 2.5 E2E and continuous integration
+
+The local machine had about 1.5 GB of free RAM, so the E2E stack was also run on
+GitHub Actions at the user's request. `.github/workflows/ci.yml` has two Ubuntu
+jobs:
+
+- `checks`: frozen install, typecheck, lint, unit tests, production build;
+- `e2e`: bundled Playwright Chromium, then `pnpm db:dev`,
+  `pnpm mock:higgsfield` and `pnpm dev`, followed by `pnpm test:e2e`.
+
+The workflow writes only dummy local values. Every provider call goes to
+`localhost:4010`; no real credential, paid endpoint, Stripe key or R2 bucket is
+used. Logs and Playwright artifacts are uploaded when the E2E job finishes.
+
+| Run | Result |
+|---|---|
+| Local Windows, 2026-10-25 | **34 passed, 1 failed** in 8.2 min. The failure was `e2e/access.spec.ts:16`, before any provider call, when the project-creation redirect stayed on `/assets`. |
+| GitHub Actions run [40181777304](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40181777304), commit `d66a2b4` | **35 passed** in 1.9 min; the `checks` job passed in 46 s. |
+
+The local failure did not reproduce in CI and its step does not exercise the
+provider layer. It is recorded as a local memory/timing failure, not claimed as
+green locally. The CI run is the authoritative E2E result. The same branch was
+used only for verification; local `main` remains uncommitted.
+
+### 2.6 Generated files
 
 `next build` regenerates `generation/catalog/models.generated.ts`; Vitest
 touches `tests/__snapshots__/catalog.test.ts.snap`. Both showed as modified
@@ -146,6 +172,7 @@ Changed files:
 | `lib/uploads.ts` | `primaryProvider().createUpload` |
 | `lib/admin.ts` | request id through `providerRequestIdOf` (same admin column) |
 | `app/api/webhooks/higgsfield/route.ts` | provider/request-id checks, neutral terminal set, dual-write on adoption |
+| `.github/workflows/ci.yml` | Ubuntu checks + offline E2E; dummy local env, loopback provider only |
 
 Preserved intentionally: every Higgsfield path/body mapping, pricing and
 ledger flow, webhook HMAC and re-fetch, finalize lease/refund logic, upload
@@ -181,8 +208,10 @@ ticket signing, auth and ownership scoping.
   fixed 50 ms for Next's `after()`. It fails under CPU load in both the
   pristine baseline and this tree. Not introduced here; left unchanged because
   changing it would alter an existing test unrelated to this slice.
-- **E2E not executed.** Prerequisites were not running. Unit/integration tests
-  and the production build were executed.
+- **Local E2E had one failure.** The Windows run was 34/35; `e2e/access.spec.ts`
+  did not reach `/projects/:id` after project creation. The same suite passed
+  35/35 in GitHub Actions, and the failing step precedes any provider call. It
+  is not claimed as locally green; CI is the authoritative E2E result (§2.5).
 - **No live price verification.** No paid calls or credentials were used, so
   the price tables in `lib/billing/pricing-table.ts` and the generated
   `pricing.generated.json` were not re-validated against the provider. Models
@@ -195,8 +224,9 @@ ticket signing, auth and ownership scoping.
 - **Licensing/provenance unresolved** at repository level: no root LICENSE,
   template licence unconfirmed, sample media provenance unrecorded. See
   `docs/SOURCE_AND_LICENSE_AUDIT.md`.
-- **Local database setup**: `pnpm db:dev` was not started; tests use
-  `mongodb-memory-server`, the mock smoke test needs no database.
+- **CI branch left on the remote.** `ci/provider-abstraction` exists only to run
+  Actions; nothing was merged or deployed. It can be deleted once the results
+  have been reviewed.
 
 ## 6. Definition-of-done check
 
@@ -204,9 +234,9 @@ ticket signing, auth and ownership scoping.
 |---|---|
 | Baseline inspected and results recorded | yes, §1–2 |
 | Substantive tested improvement | yes, provider layer + 13 tests |
-| Core functionality not knowingly broken | yes, all pre-existing tests pass; catalog unchanged |
+| Core functionality not knowingly broken | yes, all pre-existing unit/build checks pass; E2E 35/35 in CI; one local E2E environment failure is recorded, not hidden |
 | Existing Higgsfield integration preserved | yes, adapter delegates to the existing client |
-| Offline/mock usable | yes, smoke-tested §2.4 |
+| Offline/mock usable | yes, smoke-tested §2.4 and full E2E in CI §2.5 |
 | Billing/auth/ownership intact | untouched; verified by existing tests and diff review |
 | Docs describe real code | yes, five documents under `docs/` |
 | Remaining work prioritised | `docs/ROADMAP.md` |

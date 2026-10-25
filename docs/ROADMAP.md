@@ -9,7 +9,7 @@ Status at a glance:
 
 | Milestone | Theme | State | Gate |
 |---|---|---|---|
-| M0 | Baseline, audit, trust | **done** (E2E open) | — |
+| M0 | Baseline, audit, trust | **done** | — |
 | M1 | Provider seam around Higgsfield | **done** | — |
 | M2 | Offline fidelity, deterministic media, provenance | next | no credentials needed |
 | M3 | Second delivery provider | **blocked** | verified contract + licence + pricing |
@@ -24,7 +24,7 @@ depends on material we do not have, so it must not hold up M2 or M4.
 
 ---
 
-## M0 — Baseline and trust (done, one open item)
+## M0 — Baseline and trust (done)
 
 Delivered:
 
@@ -32,18 +32,16 @@ Delivered:
 - baseline and post-change check results, including the environment failures that
   were real (`docs/IMPLEMENTATION_STATUS.md` §2);
 - provenance and licence review (`docs/SOURCE_AND_LICENSE_AUDIT.md`);
-- capability matrix with code and test locations (`docs/CAPABILITY_MATRIX.md`).
+- capability matrix with code and test locations (`docs/CAPABILITY_MATRIX.md`);
+- `.github/workflows/ci.yml`, which runs the offline stack and the existing
+  Playwright suite on GitHub Actions. Run
+  [40181777304](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40181777304)
+  passed 35/35 E2E tests in 1.9 min plus the typecheck/lint/unit/build job.
 
-Open item — **E2E has never been executed in this workspace**:
-
-- Prerequisites: `pnpm db:dev`, `pnpm mock:higgsfield`, `pnpm dev` with
-  `E2E_TEST_MODE=true`, a Playwright browser channel, and `.env.local`.
-- Work: add one documented script (for example `pnpm e2e:local`) that starts the
-  three services, waits for readiness, runs `pnpm test:e2e`, and tears down
-  cleanly. Do not make the E2E suite depend on a developer's global Chrome
-  channel; install a Playwright browser instead.
-- Exit: the existing Playwright specs pass against the local stack, and the
-  command is recorded in `docs/runbook.md`.
+The local Windows E2E attempt was 34/35. The one failure was a project-creation
+navigation step that did not reach `/projects/:id`, before any provider call,
+and it did not reproduce in CI. It is recorded honestly in
+`docs/IMPLEMENTATION_STATUS.md` §2.5; CI is the authoritative result.
 
 No product code changes in M0 beyond what M1 already merged.
 
@@ -112,9 +110,10 @@ mock output from a real one at a glance.
 
 ### M2.2 Local E2E stack
 
-Covered by the M0 open item; do it first here because it is the cheapest way to
-prove M2.1 and M2.3 do not break the app. Use the mock, the in-memory Mongo
-replica set and local media storage only.
+Delivered in M0: `.github/workflows/ci.yml` starts the mock, the local MongoDB
+replica set and the dev server, then runs the existing Playwright specs. Keep it
+offline-only (loopback provider, dummy env) and use it to prove M2.1 and M2.3 do
+not break the app.
 
 ### M2.3 Deterministic media vertical slice
 
@@ -275,7 +274,7 @@ exists that fits the deployment target, and the provider contract in
 
 | Milestone | Minimum evidence |
 |---|---|
-| M0 | typecheck, lint, unit tests, build; E2E once the stack exists |
+| M0 | typecheck, lint, unit tests, build; E2E 35/35 in CI |
 | M1 | existing suite + `tests/providers.test.ts`; mock smoke test |
 | M2 | unit tests for mock triggers/guard; FFmpeg tests with and without the binary; E2E offline; provenance manifest test |
 | M3 | fixture-server contract tests; Higgsfield regression suite; no live paid call |
