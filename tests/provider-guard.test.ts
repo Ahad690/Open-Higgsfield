@@ -16,14 +16,15 @@ const ENV_KEYS = [
   "HF_CREDENTIALS",
 ] as const
 
+const mutableEnv = process.env as Record<string, string | undefined>
 const saved = Object.fromEntries(
-  ENV_KEYS.map((key) => [key, process.env[key]])
+  ENV_KEYS.map((key) => [key, mutableEnv[key]])
 ) as Record<(typeof ENV_KEYS)[number], string | undefined>
 
 function restoreEnv() {
   for (const key of ENV_KEYS) {
-    if (saved[key] === undefined) delete process.env[key]
-    else process.env[key] = saved[key]
+    if (saved[key] === undefined) delete mutableEnv[key]
+    else mutableEnv[key] = saved[key]
   }
 }
 
@@ -146,11 +147,11 @@ describe("environment guard for E2E/test mode", () => {
     e2e?: string
     baseUrl?: string
   }) {
-    process.env.NODE_ENV = values.nodeEnv ?? "test"
-    if (values.e2e === undefined) delete process.env.E2E_TEST_MODE
-    else process.env.E2E_TEST_MODE = values.e2e
-    if (values.baseUrl === undefined) delete process.env.HF_API_BASE_URL
-    else process.env.HF_API_BASE_URL = values.baseUrl
+    mutableEnv.NODE_ENV = values.nodeEnv ?? "test"
+    if (values.e2e === undefined) delete mutableEnv.E2E_TEST_MODE
+    else mutableEnv.E2E_TEST_MODE = values.e2e
+    if (values.baseUrl === undefined) delete mutableEnv.HF_API_BASE_URL
+    else mutableEnv.HF_API_BASE_URL = values.baseUrl
     await resetEnvCache()
     const { env } = await import("@/lib/env")
     return env()
