@@ -57,7 +57,9 @@ and `HF_API_BASE_URL=http://127.0.0.1:4010`, `HF_CREDENTIALS=mock:mock`,
 
 The mock binds only to loopback. `MOCK_HF_HOST` must be `localhost`, `127.0.0.0/8`
 or `::1`; `MOCK_HF_PORT` must be an integer from 1 to 65535 (or 0 in tests).
-Wildcard, LAN and public binds are refused before `listen`.
+Wildcard, LAN and public binds are refused before `listen`. Use `127.0.0.1` for
+browser/E2E runs: Chromium rejects an IPv6 literal in the dev CSP, so `::1` is
+accepted by the bind guard but not wired into `img-src`/`media-src`.
 
 Image outputs are generated labelled PNGs; video outputs are the checked-in
 `scripts/mock-media/mock-output.mp4`. Both say `MOCK OUTPUT`/`NOT AI-GENERATED`.

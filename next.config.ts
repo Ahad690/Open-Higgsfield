@@ -34,7 +34,9 @@ function contentSecurityPolicy(): string {
       ? [
           "http://localhost:4010",
           "http://127.0.0.1:4010",
-          "http://[::1]:4010",
+          // Browsers reject an IPv6 literal host-source in CSP, so the mock's
+          // default (and the E2E stack) uses 127.0.0.1. `::1` is still accepted
+          // by the bind validator for non-browser use.
         ]
       : []),
   ].filter(Boolean)
