@@ -148,7 +148,7 @@ used. Logs and Playwright artifacts are uploaded when the E2E job finishes.
 |---|---|
 | Local Windows, 2026-10-25 | **34 passed, 1 failed** in 8.2 min. The failure was `e2e/access.spec.ts:16`, before any provider call, when the project-creation redirect stayed on `/assets`. |
 | GitHub Actions run [40181777304](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40181777304), commit `d66a2b4` | **35 passed** in 1.9 min; the `checks` job passed in 46 s. |
-| GitHub Actions run [40186918479](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40186918479), commit `d3f4346` (M2.1 final) | `checks` **passed in 1m8s**: typecheck, lint, **546 unit tests passed / 100 skipped (646)**, production build and client-secret scan. `e2e` **passed in 2m45s**: **35 passed** in 1.8 min. |
+| GitHub Actions run [40187350859](https://github.com/Ahad690/Open-Higgsfield/actions/runs/40187350859), commit `c2475a1` (M2.1 final) | `checks` **passed in 53s**: typecheck, lint, **546 unit tests passed / 100 skipped (646)**, production build and client-secret scan. `e2e` **passed in 2m42s**: **35 passed** in 1.7 min. |
 
 The final M2.1 run is authoritative. Two intermediate failures were caught and
 fixed before it:
